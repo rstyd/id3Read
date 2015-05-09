@@ -8,6 +8,27 @@
 #include <sys/stat.h>
 #include <string.h>
 
+typedef struct song {
+    // TPE1 
+    char *leadPerformer;
+    // TALB
+    char *album;
+    // TIT2
+    char *title;
+    // TPUB
+    char *publisher;
+    // TRCK
+    char *trackNumber;
+    // TCOM
+    char *composer;
+    // TLEN
+    char *songLength;
+    // TENC
+    char *enconding;
+    
+
+} song_t;
+
 //#pragma pack(push)
 //#pragma pack(1)
 typedef struct rawHeader_t {

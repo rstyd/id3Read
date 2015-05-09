@@ -1,7 +1,9 @@
 #include "id3.h"
-#include <arpa/inet.h>
+#include <stdarg.h>
+#include <wchar.h>
+
 // Map the song to an array
-unsigned char *song;
+unsigned char *file;
 header_t *getHeader();
 frame_t *getNextFrame();
 // Inreases the position pointer by n
@@ -10,6 +12,9 @@ int currentPosition = 0;
 
 void printHeader(header_t *header);
 void printFrame(frame_t *frame);
+void errExit(char *errMsg, ...);
+
+//char *frameIDs[40] = {"
 
 int main(int argc, char *argv[])
 {
@@ -21,18 +26,18 @@ int main(int argc, char *argv[])
 
     char *songFilename = argv[1];
 
-    // File descriptor for the mp3 file
     int fd = open(songFilename, O_RDONLY);
     struct stat st;
     fstat(fd, &st); 
+    //
     // Couldn't open the file
     if (fd == -1) {
         if (errno == EACCES) {
-
+            errExit("Do not have access to open %s.", songFilename);
         }
     }
 
-    song = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    file = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
     // Gets the header_t from the id3 header_t from the song file
     header_t *header = getHeader();
     printHeader(header);
@@ -72,7 +77,7 @@ void DieWithError(char *errMsg) {
 
 // Memcpy wrapper that increments the position pointer
 void copyTo(void *dst, size_t size) {
-    memcpy(dst, song + currentPosition, size);
+    memcpy(dst, file + currentPosition, size);
     increasePos(size);  
 }
 
@@ -153,14 +158,75 @@ frame_t *getNextFrame() {
     free(rawHeader);
     
     // Get the attribute within the frame
-    frame->attribute = malloc(header->size);
-    copyTo(frame->attribute, header->size);
-    
+    //frame->attribute = malloc(header->size + 1);
+    //copyTo(frame->attribute, header->size);
+
+    unsigned char *attribute = malloc(header->size + 1);
+    copyTo(attribute, header->size);
+
+    // Save the album art to disk
+    if (strcmp(header->id, "APIC") == 0) {
+        char encoding;
+        copyTo(&encoding, 1);
+        if (encoding != 0) {
+            // Not sure what to do with unicode here yet
+            exit(1);
+        }
+
+        // Have to get the length of the new file first
+        int mimeLen = strlen((char *) file);
+        char *mimeType = malloc(mimeLen + 1);
+        // Add 1 to copy the null byte as well
+        copyTo(mimeType, mimeLen + 1);
+
+        unsigned char pictureType;
+        copyTo(&pictureType, 1);
+
+        // Get the description
+        int descriptionLen = strlen((char *) file);
+        char *description = malloc(descriptionLen + 1);
+        // Add 1 to copy the null byte as well
+        copyTo(description, descriptionLen + 1);
+
+        
+
+        
+    }
+    // Skip leading  0's
+    for (int i = 0; attribute[i] == 0 &&  i < header->size; i++) {
+        attribute++;
+    }
+   
+    // Attribute is in utf_16 Big Endian 
+    if (attribute[0] == 0x1 && attribute[1] == 0xFF && attribute[2] == 0xFE) {
+        attribute += 3;        
+        int newSize = (header->size - 3)/2;
+        char *newAttribute = malloc(newSize + 1);
+        for (int i = 0; i < header->size - 3; i++) {
+           // Copy odd characters to the string
+           if (i % 2 == 0) {
+                newAttribute[i/2] = attribute[i];
+           }
+        }
+        for (int i = 0; i < newSize; i++) {
+        }
+        newAttribute[newSize] = '\0';
+        free(attribute - 3);
+        printf("%s", newAttribute);
+        frame->attribute = newAttribute;
+    }
+    else {
+        attribute[header->size] = '\0';
+        frame->attribute = (char *)attribute;
+    }
+
     return frame;
 }
 
-
-
-
-
-
+void errExit(char *errMsg, ...) {
+    va_list args;
+    va_start(args, errMsg);
+    vfprintf(stderr, errMsg, args);
+    fprintf(stderr, "\n");
+    exit(1);
+}
