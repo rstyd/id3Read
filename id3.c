@@ -29,11 +29,18 @@ int main(int argc, char *argv[])
     int fd = open(songFilename, O_RDONLY);
     struct stat st;
     fstat(fd, &st); 
-    //
+
     // Couldn't open the file
     if (fd == -1) {
         if (errno == EACCES) {
             errExit("Do not have access to open %s.", songFilename);
+        }
+        else if (errno == ENOENT) {
+
+            errExit("The file %s does not exist.", songFilename);
+        }
+        else {  
+            errExit("Could not open the file");
         }
     }
 
