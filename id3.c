@@ -212,7 +212,6 @@ frame_t *getNextFrame() {
         }
         newAttribute[newSize] = '\0';
         free(attribute - 3);
-        printf("%s", newAttribute);
         frame->attribute = newAttribute;
     }
     else {
