@@ -46,12 +46,23 @@ int main(int argc, char *argv[])
 
     file = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
     // Gets the header_t from the id3 header_t from the song file
+
     header_t *header = getHeader();
     printHeader(header);
-    frame_t *frame = getNextFrame();
-    printFrame(frame);
-    frame = getNextFrame();
-    printFrame(frame);
+    if (header->version != 3) {
+        printf("id3Read currently only supports id3v2.3 this file is verion id3v2.%d.\n", header->version);
+        exit(1);
+    }
+    // Go through all of the frames in the document 
+    for (;;) {
+        frame_t *frame = getNextFrame();
+        if (strcmp(frame->header->id, "") != 0)
+            printFrame(frame);
+        if (currentPosition + sizeof(frame_t) > header->size) {
+            break;
+        }
+        free(frame);
+    }
 }
 
 void printHeader(header_t *header) {
@@ -135,6 +146,8 @@ header_t *getHeader() {
 }
 
 frame_t *getNextFrame() {
+
+    // TODO Need to figure out how to handle the different types of TRCK entries
     rawFrameHeader_t *rawHeader = malloc(sizeof(rawFrameHeader_t));
     frameHeader_t *header = malloc(sizeof(frameHeader_t));
     frame_t *frame = malloc(sizeof(frame));
@@ -163,48 +176,85 @@ frame_t *getNextFrame() {
 
     frame->header = header;
     free(rawHeader);
-    
     // Get the attribute within the frame
     //frame->attribute = malloc(header->size + 1);
     //copyTo(frame->attribute, header->size);
 
-    unsigned char *attribute = malloc(header->size + 1);
-    copyTo(attribute, header->size);
 
     // Save the album art to disk
     if (strcmp(header->id, "APIC") == 0) {
+        int imageHeaderLen = 0;
+
+        // States which character encoding is used
         char encoding;
         copyTo(&encoding, 1);
+        imageHeaderLen++;
         if (encoding != 0) {
             // Not sure what to do with unicode here yet
             exit(1);
         }
 
-        // Have to get the length of the new file first
-        int mimeLen = strlen((char *) file);
+        // Have to get the length of the string first
+        int mimeLen = strlen((char *) file + currentPosition);
+        //printf("Pos %d\n", currentPosition);
+        //printf("mimeLen: %d\n", mimeLen);
         char *mimeType = malloc(mimeLen + 1);
         // Add 1 to copy the null byte as well
         copyTo(mimeType, mimeLen + 1);
+        imageHeaderLen += mimeLen + 1;
 
-        unsigned char pictureType;
+        char pictureType;
         copyTo(&pictureType, 1);
-
+        imageHeaderLen++;
+        
         // Get the description
-        int descriptionLen = strlen((char *) file);
+        int descriptionLen = strlen((char *) file + currentPosition);
         char *description = malloc(descriptionLen + 1);
-        // Add 1 to copy the null byte as well
         copyTo(description, descriptionLen + 1);
+        if (strcmp(description, "") == 0) 
+            description = "None";
+        imageHeaderLen += descriptionLen + 1;
 
+        //printf("Encoding: %x mimeType: %s pictureType: %x description: %s \n", encoding, mimeType, pictureType, description);
+        // The size of the image is the size given in the frame header minus the size of the image header
+        int imageSize = header->size - imageHeaderLen;
+        unsigned char *imageData = malloc(header->size - imageHeaderLen);
+        copyTo(imageData, imageSize);
         
+        // Figure out the extension
+        char *extension = NULL;
+        if (strstr(mimeType, "jpeg") != NULL || strstr("mimeType", "jpeg") != NULL) {
+            extension = ".jpg";
+        }
+        else if (strstr(mimeType, "bmp") != NULL) {
+            extension = ".bmp";
+        }
+        else if (strstr(mimeType, "png") != NULL) {
+            extension = ".png";
+        }
 
-        
+
+
+        // TODO Need to figure out how I should create the name
+        char *imageFilename = malloc(35);
+        sprintf(imageFilename, "album%s", extension);
+        printf("Writing %s\n", imageFilename);
+
+        FILE *image = fopen(imageFilename, "wb");
+    
+        fwrite(imageData, 1, imageSize, image);
+        frame->attribute = "image";
+        return frame;
     }
+
+    unsigned char *attribute = malloc(header->size + 1);
+    copyTo(attribute, header->size);
     // Skip leading  0's
     for (int i = 0; attribute[i] == 0 &&  i < header->size; i++) {
         attribute++;
     }
    
-    // Attribute is in utf_16 Big Endian 
+    // Attribute is in utf_16 Big Endian with the start of header prepended
     if (attribute[0] == 0x1 && attribute[1] == 0xFF && attribute[2] == 0xFE) {
         attribute += 3;        
         int newSize = (header->size - 3)/2;
@@ -220,6 +270,9 @@ frame_t *getNextFrame() {
         newAttribute[newSize] = '\0';
         free(attribute - 3);
         frame->attribute = newAttribute;
+    }
+    else if (attribute[1] == 0xFF && attribute[2] == 0xFE) {
+
     }
     else {
         attribute[header->size] = '\0';
