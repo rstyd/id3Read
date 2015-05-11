@@ -25,8 +25,6 @@ typedef struct song {
     char *songLength;
     // TENC
     char *enconding;
-    
-
 } song_t;
 
 //#pragma pack(push)
@@ -107,6 +105,7 @@ typedef struct tag {
     bool extended;
     bool experimental;
 } tag;
+
 
 void DieWithError(char *errMsg);
 
